@@ -1,17 +1,64 @@
 """
 Campaigns Models - Projects, Media Plans, Campaigns, Subcampaigns
-Based on EOS Schema V67
+Based on EOS Schema V100
 
 Hierarchy:
 Project → MediaPlan → Campaign → Subcampaign → SubcampaignVersion
 
-V67 Changes:
-- media_unit_type moved from Subcampaign to SubcampaignVersion only
+V100 Changes:
+- SubcampaignVersion: added is_unit_price_overwritten flag
+- SubcampaignVersion: added performance_pricing_models_id reference
+- SubcampaignVersion: added currency_id reference
+- Subcampaign: Updated workflow states per documentation
 """
 from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from apps.core.models import BaseModel
+
+
+# =============================================================================
+# WORKFLOW STATUS ENUMS
+# =============================================================================
+
+class SubcampaignStatusEnum(models.TextChoices):
+    """
+    V100: Subcampaign/SubcampaignVersion workflow states.
+    Based on Final Subcampaign Transition Table from documentation.
+    """
+    DRAFT = 'DRAFT', _('Draft')
+    WAITING_FOR_CREATIVES = 'WAITING_FOR_CREATIVES', _('Waiting for Creatives')
+    WAIT_FOR_OPS_APPROVAL = 'WAIT_FOR_OPS_APPROVAL', _('Wait for Ops Approval')
+    OPS_APPROVAL = 'OPS_APPROVAL', _('Ops Approval')
+    WAIT_CLIENT = 'WAIT_CLIENT', _('Wait Client')
+    APPROVED = 'APPROVED', _('Approved')
+    MEDIA_SETUP = 'MEDIA_SETUP', _('Media Setup')
+    LIVE = 'LIVE', _('Live')
+    PAUSED = 'PAUSED', _('Paused')
+    REVIEW = 'REVIEW', _('Review')
+    CANCELLED = 'CANCELLED', _('Cancelled')
+    FINALIZED = 'FINALIZED', _('Finalized')
+
+
+# Editable states - states where pricing/budget/fee changes are allowed
+EDITABLE_STATES = [
+    SubcampaignStatusEnum.DRAFT,
+    SubcampaignStatusEnum.WAITING_FOR_CREATIVES,
+    SubcampaignStatusEnum.WAIT_FOR_OPS_APPROVAL,
+    SubcampaignStatusEnum.OPS_APPROVAL,
+    SubcampaignStatusEnum.REVIEW,
+]
+
+# Non-editable states - states where modifications are blocked
+NON_EDITABLE_STATES = [
+    SubcampaignStatusEnum.WAIT_CLIENT,
+    SubcampaignStatusEnum.APPROVED,
+    SubcampaignStatusEnum.MEDIA_SETUP,
+    SubcampaignStatusEnum.LIVE,
+    SubcampaignStatusEnum.PAUSED,
+    SubcampaignStatusEnum.CANCELLED,
+    SubcampaignStatusEnum.FINALIZED,
+]
 
 
 # =============================================================================
@@ -21,7 +68,7 @@ from apps.core.models import BaseModel
 class Project(BaseModel):
     """
     Project Model - Container for media plans.
-    V66: id uuid [pk], advertiser_id uuid [not null]
+    V100: id uuid [pk], advertiser_id uuid [not null]
     """
     STATUS_CHOICES = [
         ('draft', _('Draft')),
@@ -71,7 +118,7 @@ class Project(BaseModel):
 class MediaPlan(BaseModel):
     """
     Media Plan Model - Planning container for campaigns.
-    V66: id uuid [pk], project_id uuid [not null]
+    V100: id uuid [pk], project_id uuid [not null]
     """
     STATUS_CHOICES = [
         ('draft', _('Draft')),
@@ -125,7 +172,7 @@ class MediaPlan(BaseModel):
 class Campaign(BaseModel):
     """
     Campaign Model - Marketing campaign within a media plan.
-    V66: id uuid [pk], media_plan_id uuid [not null]
+    V100: id uuid [pk], media_plan_id uuid [not null]
     """
     media_plan = models.ForeignKey(
         MediaPlan,
@@ -191,18 +238,14 @@ class Campaign(BaseModel):
 class Subcampaign(BaseModel):
     """
     Subcampaign Model - Individual channel/platform allocation.
-    V67: id uuid [pk], campaign_id uuid [not null]
-    Note: media_unit_type moved to SubcampaignVersion in V67
-    """
-    STATUS_CHOICES = [
-        ('draft', _('Draft')),
-        ('pending_review', _('Pending Review')),
-        ('approved', _('Approved')),
-        ('active', _('Active')),
-        ('paused', _('Paused')),
-        ('completed', _('Completed')),
-    ]
+    V100: id uuid [pk], campaign_id uuid [not null]
 
+    subcampaign_code format: AAYYMMNNNN
+    - AA: agency.code_subcampaign (2 chars)
+    - YY: year (2 digits)
+    - MM: month (2 digits)
+    - NNNN: sequential number (0001-9999)
+    """
     campaign = models.ForeignKey(
         Campaign,
         on_delete=models.CASCADE,
@@ -211,7 +254,12 @@ class Subcampaign(BaseModel):
     )
 
     name = models.CharField(_('name'), max_length=300)
-    subcampaign_code = models.CharField(_('subcampaign code'), max_length=255, unique=True)
+    subcampaign_code = models.CharField(
+        _('subcampaign code'),
+        max_length=255,
+        unique=True,
+        help_text=_('Format: AAYYMMNNNN (agency code + year + month + sequence)')
+    )
     objective = models.TextField(_('objective'), blank=True, null=True)
 
     # Pricing catalogs (NOT NULL)
@@ -309,11 +357,12 @@ class Subcampaign(BaseModel):
     # Geographic
     city_geoname_id = models.IntegerField(_('city geoname ID'))
 
+    # V100: Updated status choices with workflow states
     status = models.CharField(
         _('status'),
         max_length=30,
-        choices=STATUS_CHOICES,
-        default='draft'
+        choices=SubcampaignStatusEnum.choices,
+        default=SubcampaignStatusEnum.DRAFT
     )
     is_active = models.BooleanField(_('is active'), default=True)
 
@@ -323,10 +372,17 @@ class Subcampaign(BaseModel):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['trafficker_user']),
+            models.Index(fields=['status']),
+            models.Index(fields=['subcampaign_code']),
         ]
 
     def __str__(self):
         return f"{self.name} ({self.subcampaign_code})"
+
+    @property
+    def is_editable(self):
+        """Returns True if subcampaign is in an editable state"""
+        return self.status in [s.value for s in EDITABLE_STATES]
 
 
 # =============================================================================
@@ -336,16 +392,14 @@ class Subcampaign(BaseModel):
 class SubcampaignVersion(BaseModel):
     """
     Subcampaign Version - Tracks budget/date versions of a subcampaign.
-    V67: id uuid [pk], subcampaign_id uuid [not null]
-    V67 Change: media_unit_type is now defined per version (NOT NULL)
-    """
-    STATUS_CHOICES = [
-        ('draft', _('Draft')),
-        ('active', _('Active')),
-        ('completed', _('Completed')),
-        ('cancelled', _('Cancelled')),
-    ]
+    V100: id uuid [pk], subcampaign_id uuid [not null]
 
+    V100 Changes:
+    - Added: is_unit_price_overwritten flag
+    - Added: performance_pricing_models_id reference
+    - Added: currency_id reference
+    - Updated: workflow status choices
+    """
     subcampaign = models.ForeignKey(
         Subcampaign,
         on_delete=models.CASCADE,
@@ -359,14 +413,34 @@ class SubcampaignVersion(BaseModel):
     start_date = models.DateField(_('start date'))
     end_date = models.DateField(_('end date'))
 
+    # V100: Updated status choices
     status = models.CharField(
         _('status'),
         max_length=30,
-        choices=STATUS_CHOICES,
-        default='draft'
+        choices=SubcampaignStatusEnum.choices,
+        default=SubcampaignStatusEnum.DRAFT
     )
 
-    # V67: unit type per version (NOT NULL) - moved from Subcampaign
+    # V100: Currency reference
+    currency = models.ForeignKey(
+        'core.Currency',
+        on_delete=models.PROTECT,
+        related_name='subcampaign_versions',
+        verbose_name=_('currency')
+    )
+
+    # V100: Performance pricing model reference (for pricing traceability)
+    performance_pricing_model = models.ForeignKey(
+        'entities.PerformancePricingModel',
+        on_delete=models.PROTECT,
+        related_name='subcampaign_versions',
+        verbose_name=_('performance pricing model'),
+        null=True,
+        blank=True,
+        help_text=_('Reference to the pricing model used for this version')
+    )
+
+    # V100: unit type per version (NOT NULL)
     media_unit_type = models.ForeignKey(
         'entities.MediaUnitType',
         on_delete=models.PROTECT,
@@ -374,9 +448,17 @@ class SubcampaignVersion(BaseModel):
         verbose_name=_('media unit type')
     )
 
+    # Pricing fields
     unit_price_micros = models.BigIntegerField(_('unit price (micros)'))
     planned_units = models.DecimalField(_('planned units'), max_digits=18, decimal_places=4)
     planned_budget_micros = models.BigIntegerField(_('planned budget (micros)'))
+
+    # V100: NEW - flag to track manual price overrides
+    is_unit_price_overwritten = models.BooleanField(
+        _('is unit price overwritten'),
+        default=False,
+        help_text=_('True if the unit price was manually overridden by user')
+    )
 
     is_active = models.BooleanField(_('is active'), default=True)
 
@@ -392,6 +474,8 @@ class SubcampaignVersion(BaseModel):
         ]
         indexes = [
             models.Index(fields=['media_unit_type']),
+            models.Index(fields=['status']),
+            models.Index(fields=['performance_pricing_model']),
         ]
 
     def __str__(self):
@@ -404,3 +488,18 @@ class SubcampaignVersion(BaseModel):
     @property
     def planned_budget(self):
         return self.planned_budget_micros / 1_000_000
+
+    @property
+    def is_editable(self):
+        """Returns True if version is in an editable state"""
+        return self.status in [s.value for s in EDITABLE_STATES]
+
+    def calculate_planned_budget(self):
+        """
+        Calculate planned budget based on unit price and planned units.
+        Considers media_unit_type semantics (CPM divides by 1000).
+        """
+        if self.media_unit_type and self.media_unit_type.code == 'CPM':
+            # For CPM, price is per 1000 impressions
+            return int(self.planned_units * self.unit_price_micros / 1000)
+        return int(self.planned_units * self.unit_price_micros)

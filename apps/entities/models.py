@@ -1,12 +1,16 @@
 """
 Entities Models - Polymorphic Entity System for Pricing and Labels
-Based on EOS Schema V66
+Based on EOS Schema V100
 
 This module implements the entity system with:
 - Base Entity table with entity_type discriminator
 - Subtype tables (goals, publishers, tactics, etc.)
 - Custom label tables (l5_custom1 through l20_custom10)
 - Media unit type catalog
+
+V100 Changes:
+- PerformancePricingModel: removed is_percentage, added media_unit_type_id and default_payment_method
+- PerformancePricingModelValue: added start_date and end_date fields
 """
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -285,10 +289,22 @@ class Country(models.Model):
         return self.code
 
 
+class PaymentMethodTypeEnum(models.TextChoices):
+    """V100: payment_method_enum for default payment method"""
+    PREPAID = 'PREPAID', _('Prepaid')
+    POSTPAID = 'POSTPAID', _('Postpaid')
+    CREDIT = 'CREDIT', _('Credit')
+
+
 class PerformancePricingModel(models.Model):
     """
     Performance Pricing Model Entity Subtype.
-    V66: id uuid [pk], entity_type = 'performance_pricing_model'
+    V100: id uuid [pk], entity_type = 'performance_pricing_model'
+
+    V100 Changes:
+    - Removed: is_percentage field
+    - Added: media_unit_type_id (NOT NULL)
+    - Added: default_payment_method enum
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     entity_type = models.CharField(
@@ -297,9 +313,23 @@ class PerformancePricingModel(models.Model):
         default=EntityType.PERFORMANCE_PRICING_MODEL,
         editable=False
     )
-    code = models.CharField(_('code'), max_length=10, unique=True)
-    description = models.TextField(_('description'), blank=True, null=True)
-    is_percentage = models.BooleanField(_('is percentage'), default=False)
+
+    # V100: cost_center reference
+    cost_center = models.ForeignKey(
+        'core.CostCenter',
+        on_delete=models.CASCADE,
+        related_name='performance_pricing_models',
+        verbose_name=_('cost center')
+    )
+
+    # V100: payment_type field
+    payment_type = models.CharField(
+        _('payment type'),
+        max_length=20,
+        default='media_unit_type'
+    )
+
+    # V100: media_unit_type_id (NOT NULL)
     media_unit_type = models.ForeignKey(
         MediaUnitType,
         on_delete=models.PROTECT,
@@ -307,18 +337,43 @@ class PerformancePricingModel(models.Model):
         verbose_name=_('media unit type')
     )
 
+    # V100: NEW - default_payment_method enum
+    default_payment_method = models.CharField(
+        _('default payment method'),
+        max_length=20,
+        choices=PaymentMethodTypeEnum.choices,
+        default=PaymentMethodTypeEnum.POSTPAID
+    )
+
+    is_active = models.BooleanField(_('is active'), default=True)
+    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('updated at'), auto_now=True)
+
     class Meta:
         verbose_name = _('performance pricing model')
         verbose_name_plural = _('performance pricing models')
+        indexes = [
+            models.Index(fields=['cost_center']),
+            models.Index(fields=['payment_type']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['id', 'entity_type'],
+                name='ux_perf_pricing_models_id_type'
+            )
+        ]
 
     def __str__(self):
-        return self.code
+        return f"{self.cost_center} - {self.media_unit_type.code}"
 
 
 class PerformancePricingModelValue(models.Model):
     """
     Performance Pricing Model Value Entity Subtype.
-    V66: id uuid [pk], entity_type = 'performance_pricing_model_value'
+    V100: id uuid [pk], entity_type = 'performance_pricing_model_value'
+
+    V100 Changes:
+    - Added: start_date and end_date fields for date-range based pricing
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     entity_type = models.CharField(
@@ -327,14 +382,58 @@ class PerformancePricingModelValue(models.Model):
         default=EntityType.PERFORMANCE_PRICING_MODEL_VALUE,
         editable=False
     )
-    value_micros = models.BigIntegerField(_('value (micros)'))
+
+    # Reference to the pricing model
+    performance_pricing_model = models.ForeignKey(
+        PerformancePricingModel,
+        on_delete=models.CASCADE,
+        related_name='values',
+        verbose_name=_('performance pricing model')
+    )
+
+    # V100: value in micros
+    value_micros = models.BigIntegerField(
+        _('value (micros)'),
+        help_text=_('Price value in micros (1 unit = 1,000,000 micros)')
+    )
+
+    # V100: NEW - date range fields
+    start_date = models.DateField(
+        _('start date'),
+        null=True,
+        blank=True,
+        help_text=_('Start date for this pricing value')
+    )
+    end_date = models.DateField(
+        _('end date'),
+        null=True,
+        blank=True,
+        help_text=_('End date for this pricing value')
+    )
+
+    created_at = models.DateTimeField(_('created at'), auto_now_add=True)
+    updated_at = models.DateTimeField(_('updated at'), auto_now=True)
 
     class Meta:
         verbose_name = _('performance pricing model value')
         verbose_name_plural = _('performance pricing model values')
+        indexes = [
+            models.Index(fields=['performance_pricing_model']),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['id', 'entity_type'],
+                name='ux_perf_pricing_models_value_id_type'
+            )
+        ]
 
     def __str__(self):
         return f"{self.value_micros / 1_000_000}"
+
+    @property
+    def value(self):
+        """Returns value as decimal"""
+        return self.value_micros / 1_000_000
 
 
 class Effort(models.Model):

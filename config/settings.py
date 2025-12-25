@@ -16,7 +16,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-this-in-produc
 DEBUG = config('DEBUG', default=True, cast=bool)
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
-# Application definition - Based on EOS Schema V67
+# Application definition - Based on EOS Schema V100
 SHARED_APPS = [
     'django_tenants',
     'django.contrib.contenttypes',
@@ -38,13 +38,14 @@ SHARED_APPS = [
     'apps.core',
     'apps.accounts',
     'apps.geo',
+    'apps.audit',  # V100: Audit system (shared for cross-tenant auditing)
 ]
 
 TENANT_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.auth',
 
-    # Tenant-specific apps (V67 schema)
+    # Tenant-specific apps (V100 schema)
     'apps.entities',
     'apps.campaigns',
     'apps.payments',
