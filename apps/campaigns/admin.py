@@ -1,88 +1,40 @@
 """
 Campaigns Admin - Module 4 Administration
+Based on EOS Schema V100
 """
 from django.contrib import admin
 from .models import (
-    Project, Campaign, MediaPlan, Subcampaign,
-    SubcampaignVersion, SubcampaignFee, CampaignComment, CampaignDocument
+    Project, MediaPlan, Campaign, Subcampaign, SubcampaignVersion
 )
 
 
-class CampaignInline(admin.TabularInline):
-    model = Campaign
+# =============================================================================
+# PROJECT ADMIN
+# =============================================================================
+
+class MediaPlanInline(admin.TabularInline):
+    model = MediaPlan
     extra = 0
-    fields = ['name', 'code', 'status', 'start_date', 'end_date', 'budget_micros']
-    readonly_fields = ['code']
+    fields = ['name', 'status', 'start_date', 'end_date', 'total_budget_micros', 'is_active']
+    readonly_fields = []
     show_change_link = True
 
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ['name', 'code', 'advertiser', 'status', 'start_date', 'end_date', 'budget']
-    list_filter = ['status', 'is_template', 'advertiser__client__agency']
-    search_fields = ['name', 'code', 'advertiser__name']
-    readonly_fields = ['id', 'created_at', 'updated_at', 'budget']
+    list_display = ['name', 'internal_code', 'advertiser', 'status', 'is_active', 'created_at']
+    list_filter = ['status', 'is_active', 'advertiser__client__cost_center__agency']
+    search_fields = ['name', 'internal_code', 'advertiser__name']
+    readonly_fields = ['id', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'
-    inlines = [CampaignInline]
-
-    fieldsets = (
-        (None, {
-            'fields': ('advertiser', 'name', 'code', 'description', 'status')
-        }),
-        ('Dates', {
-            'fields': ('start_date', 'end_date')
-        }),
-        ('Budget', {
-            'fields': ('budget_micros', 'budget', 'currency')
-        }),
-        ('Team', {
-            'fields': ('owner', 'planner')
-        }),
-        ('Metadata', {
-            'fields': ('notes', 'is_template')
-        }),
-        ('System', {
-            'fields': ('id', 'created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
-
-
-class MediaPlanInline(admin.TabularInline):
-    model = MediaPlan
-    extra = 0
-    fields = ['name', 'version', 'status', 'total_budget_micros', 'is_active_version']
-    readonly_fields = ['version']
-    show_change_link = True
-
-
-@admin.register(Campaign)
-class CampaignAdmin(admin.ModelAdmin):
-    list_display = ['name', 'code', 'project', 'status', 'objective', 'start_date', 'end_date', 'budget']
-    list_filter = ['status', 'objective', 'is_template', 'project__advertiser__client__agency']
-    search_fields = ['name', 'code', 'project__name']
-    readonly_fields = ['id', 'created_at', 'updated_at', 'budget', 'duration_days']
-    date_hierarchy = 'start_date'
     inlines = [MediaPlanInline]
 
     fieldsets = (
         (None, {
-            'fields': ('project', 'name', 'code', 'description', 'status', 'objective')
+            'fields': ('advertiser', 'name', 'internal_code', 'description', 'status')
         }),
-        ('Dates', {
-            'fields': ('start_date', 'end_date', 'duration_days')
-        }),
-        ('Budget', {
-            'fields': ('budget_micros', 'budget', 'currency')
-        }),
-        ('Targeting', {
-            'fields': ('target_audience', 'target_countries', 'target_kpis')
-        }),
-        ('Team', {
-            'fields': ('owner',)
-        }),
-        ('Metadata', {
-            'fields': ('notes', 'is_template')
+        ('Status', {
+            'fields': ('is_active',)
         }),
         ('System', {
             'fields': ('id', 'created_at', 'updated_at'),
@@ -91,37 +43,38 @@ class CampaignAdmin(admin.ModelAdmin):
     )
 
 
-class SubcampaignInline(admin.TabularInline):
-    model = Subcampaign
+# =============================================================================
+# MEDIA PLAN ADMIN
+# =============================================================================
+
+class CampaignInline(admin.TabularInline):
+    model = Campaign
     extra = 0
-    fields = ['name', 'code', 'channel', 'platform', 'status', 'budget_micros']
-    readonly_fields = ['code']
+    fields = ['campaign_name', 'start_date', 'end_date', 'total_budget_micros', 'is_active']
+    readonly_fields = []
     show_change_link = True
 
 
 @admin.register(MediaPlan)
 class MediaPlanAdmin(admin.ModelAdmin):
-    list_display = ['name', 'version', 'campaign', 'status', 'total_budget', 'is_active_version']
-    list_filter = ['status', 'is_active_version']
-    search_fields = ['name', 'campaign__name']
-    readonly_fields = ['id', 'version', 'created_at', 'updated_at', 'total_budget']
-    inlines = [SubcampaignInline]
+    list_display = ['name', 'project', 'status', 'total_budget', 'start_date', 'end_date', 'is_active']
+    list_filter = ['status', 'is_active']
+    search_fields = ['name', 'project__name', 'external_id']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'total_budget']
+    inlines = [CampaignInline]
 
     fieldsets = (
         (None, {
-            'fields': ('campaign', 'name', 'version', 'description', 'status')
+            'fields': ('project', 'name', 'notes', 'external_id', 'status')
         }),
         ('Dates', {
             'fields': ('start_date', 'end_date')
         }),
         ('Budget', {
-            'fields': ('total_budget_micros', 'total_budget', 'currency')
+            'fields': ('total_budget_micros', 'total_budget')
         }),
-        ('Approvals', {
-            'fields': ('created_by', 'approved_by', 'approved_at', 'client_approved_by', 'client_approved_at')
-        }),
-        ('Metadata', {
-            'fields': ('notes', 'is_active_version')
+        ('Status', {
+            'fields': ('is_active',)
         }),
         ('System', {
             'fields': ('id', 'created_at', 'updated_at'),
@@ -130,44 +83,45 @@ class MediaPlanAdmin(admin.ModelAdmin):
     )
 
 
-class SubcampaignFeeInline(admin.TabularInline):
-    model = SubcampaignFee
+# =============================================================================
+# CAMPAIGN ADMIN
+# =============================================================================
+
+class SubcampaignInline(admin.TabularInline):
+    model = Subcampaign
     extra = 0
-    fields = ['name', 'fee_type', 'calculation_method', 'percentage', 'calculated_amount_micros']
+    fields = ['name', 'subcampaign_code', 'status', 'is_active']
+    readonly_fields = ['subcampaign_code']
+    show_change_link = True
 
 
-@admin.register(Subcampaign)
-class SubcampaignAdmin(admin.ModelAdmin):
-    list_display = ['name', 'code', 'media_plan', 'channel', 'platform', 'status', 'budget']
-    list_filter = ['status', 'channel', 'platform', 'buying_type']
-    search_fields = ['name', 'code', 'media_plan__name']
-    readonly_fields = ['id', 'created_at', 'updated_at', 'budget', 'unit_price']
-    inlines = [SubcampaignFeeInline]
+@admin.register(Campaign)
+class CampaignAdmin(admin.ModelAdmin):
+    list_display = ['campaign_name', 'internal_campaign_name', 'media_plan', 'total_budget', 'start_date', 'end_date', 'is_active']
+    list_filter = ['is_active', 'category', 'product', 'language']
+    search_fields = ['campaign_name', 'internal_campaign_name', 'external_id', 'media_plan__name']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'total_budget']
+    date_hierarchy = 'start_date'
+    inlines = [SubcampaignInline]
 
     fieldsets = (
         (None, {
-            'fields': ('media_plan', 'name', 'code', 'description', 'status')
-        }),
-        ('Channel/Platform', {
-            'fields': ('channel', 'platform')
+            'fields': ('media_plan', 'campaign_name', 'internal_campaign_name', 'external_id')
         }),
         ('Dates', {
             'fields': ('start_date', 'end_date')
         }),
-        ('Budget & Buying', {
-            'fields': ('budget_micros', 'budget', 'currency', 'buying_type', 'unit_price_micros', 'unit_price', 'estimated_units')
+        ('Categorization', {
+            'fields': ('category', 'product', 'language')
         }),
-        ('Targeting', {
-            'fields': ('target_audience', 'target_locations', 'target_devices')
+        ('Budget', {
+            'fields': ('total_budget_micros', 'total_budget')
         }),
-        ('Creative', {
-            'fields': ('creative_format', 'creative_sizes')
+        ('Details', {
+            'fields': ('landing_url', 'invoice_reference')
         }),
-        ('External Integration', {
-            'fields': ('external_id', 'external_account_id')
-        }),
-        ('Metadata', {
-            'fields': ('notes',)
+        ('Status', {
+            'fields': ('is_active',)
         }),
         ('System', {
             'fields': ('id', 'created_at', 'updated_at'),
@@ -176,30 +130,89 @@ class SubcampaignAdmin(admin.ModelAdmin):
     )
 
 
+# =============================================================================
+# SUBCAMPAIGN ADMIN
+# =============================================================================
+
+class SubcampaignVersionInline(admin.TabularInline):
+    model = SubcampaignVersion
+    extra = 0
+    fields = ['version_number', 'version_name', 'status', 'planned_budget_micros', 'is_active']
+    readonly_fields = ['version_number']
+    show_change_link = True
+
+
+@admin.register(Subcampaign)
+class SubcampaignAdmin(admin.ModelAdmin):
+    list_display = ['name', 'subcampaign_code', 'campaign', 'status', 'trafficker_user', 'is_active']
+    list_filter = ['status', 'is_active', 'goal', 'publisher', 'tactic', 'country']
+    search_fields = ['name', 'subcampaign_code', 'campaign__campaign_name']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'is_editable']
+    inlines = [SubcampaignVersionInline]
+
+    fieldsets = (
+        (None, {
+            'fields': ('campaign', 'name', 'subcampaign_code', 'objective', 'status')
+        }),
+        ('Pricing Catalogs', {
+            'fields': ('goal', 'publisher', 'tactic', 'creative_type', 'country', 'effort')
+        }),
+        ('Trafficker', {
+            'fields': ('trafficker_user',)
+        }),
+        ('Custom Labels', {
+            'fields': (
+                'l5_custom1', 'l8_custom2', 'l9_custom3', 'l11_custom4', 'l13_custom5',
+                'l15_custom6', 'l16_custom7', 'l17_custom8', 'l19_custom9', 'l20_custom10'
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Geographic', {
+            'fields': ('city_geoname_id',)
+        }),
+        ('Status', {
+            'fields': ('is_active', 'is_editable')
+        }),
+        ('System', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+
+
+# =============================================================================
+# SUBCAMPAIGN VERSION ADMIN
+# =============================================================================
+
 @admin.register(SubcampaignVersion)
 class SubcampaignVersionAdmin(admin.ModelAdmin):
-    list_display = ['subcampaign', 'version_number', 'status', 'budget_micros', 'changed_by', 'created_at']
-    list_filter = ['status']
-    search_fields = ['subcampaign__name']
-    readonly_fields = ['id', 'created_at']
+    list_display = [
+        'subcampaign', 'version_number', 'version_name', 'status',
+        'planned_budget', 'unit_price', 'is_unit_price_overwritten', 'is_active'
+    ]
+    list_filter = ['status', 'is_active', 'is_unit_price_overwritten', 'currency', 'media_unit_type']
+    search_fields = ['subcampaign__name', 'subcampaign__subcampaign_code', 'version_name']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'unit_price', 'planned_budget', 'is_editable']
 
-
-@admin.register(SubcampaignFee)
-class SubcampaignFeeAdmin(admin.ModelAdmin):
-    list_display = ['name', 'subcampaign', 'fee_type', 'calculation_method', 'calculated_amount']
-    list_filter = ['fee_type', 'calculation_method', 'is_included_in_budget']
-    search_fields = ['name', 'subcampaign__name']
-
-
-@admin.register(CampaignComment)
-class CampaignCommentAdmin(admin.ModelAdmin):
-    list_display = ['campaign', 'author', 'is_internal', 'created_at']
-    list_filter = ['is_internal']
-    search_fields = ['campaign__name', 'author__email', 'content']
-
-
-@admin.register(CampaignDocument)
-class CampaignDocumentAdmin(admin.ModelAdmin):
-    list_display = ['name', 'campaign', 'document_type', 'uploaded_by', 'is_client_visible', 'created_at']
-    list_filter = ['document_type', 'is_client_visible']
-    search_fields = ['name', 'campaign__name']
+    fieldsets = (
+        (None, {
+            'fields': ('subcampaign', 'version_number', 'version_name', 'status')
+        }),
+        ('Dates', {
+            'fields': ('start_date', 'end_date')
+        }),
+        ('Pricing', {
+            'fields': (
+                'currency', 'media_unit_type', 'performance_pricing_model',
+                'unit_price_micros', 'unit_price', 'is_unit_price_overwritten',
+                'planned_units', 'planned_budget_micros', 'planned_budget'
+            )
+        }),
+        ('Status', {
+            'fields': ('is_active', 'is_editable')
+        }),
+        ('System', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
