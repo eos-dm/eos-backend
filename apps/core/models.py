@@ -462,31 +462,4 @@ class SystemVersion(BaseModel):
         return f"{self.name} - {self.applied_at}"
 
 
-class AuditLog(BaseModel):
-    """
-    Audit Log Model - Track all changes to important entities.
-    V66: entity_type varchar(50), entity_id uuid, action varchar(50)
-    """
-    entity_type = models.CharField(_('entity type'), max_length=50, db_index=True)
-    entity_id = models.UUIDField(_('entity id'), db_index=True)
-    action = models.CharField(_('action'), max_length=50)
-    description = models.TextField(_('description'), blank=True, null=True)
-    created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        related_name='audit_logs',
-        verbose_name=_('created by'),
-        null=True,
-        blank=True
-    )
-
-    class Meta:
-        verbose_name = _('audit log')
-        verbose_name_plural = _('audit logs')
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['entity_type', 'entity_id']),
-        ]
-
-    def __str__(self):
-        return f"{self.action} - {self.entity_type} - {self.created_at}"
+# AuditLog moved to apps.audit.models to avoid circular dependency

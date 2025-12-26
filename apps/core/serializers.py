@@ -1,11 +1,13 @@
 """
 Core Serializers - Multi-tenancy and Business Hierarchy API
+Based on EOS Schema V100
 """
 from rest_framework import serializers
 from .models import (
     Tenant, Agency, CostCenter, Client, Advertiser,
-    Currency, ExchangeRate, AuditLog
+    Currency
 )
+from apps.audit.models import AuditLog
 
 
 class TenantSerializer(serializers.ModelSerializer):
@@ -15,10 +17,7 @@ class TenantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = [
-            'id', 'name', 'slug', 'is_active',
-            'default_currency', 'timezone', 'language',
-            'contact_email', 'contact_phone', 'address',
-            'logo', 'description',
+            'id', 'name', 'code_prefix', 'is_active',
             'agencies_count',
             'created_at', 'updated_at'
         ]
@@ -32,28 +31,27 @@ class TenantListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for Tenant list."""
     class Meta:
         model = Tenant
-        fields = ['id', 'name', 'slug', 'is_active', 'default_currency']
+        fields = ['id', 'name', 'code_prefix', 'is_active']
 
 
 class AgencySerializer(serializers.ModelSerializer):
     """Serializer for Agency model."""
     tenant_name = serializers.CharField(source='tenant.name', read_only=True)
-    clients_count = serializers.SerializerMethodField()
     cost_centers_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Agency
         fields = [
-            'id', 'tenant', 'tenant_name', 'name', 'code', 'is_active',
-            'contact_email', 'contact_phone', 'address',
-            'default_currency', 'logo', 'description',
-            'clients_count', 'cost_centers_count',
+            'id', 'tenant', 'tenant_name', 'name', 'internal_code', 'is_active',
+            'code_subcampaign', 'description',
+            'contact_name', 'contact_email', 'contact_phone',
+            'address_line1', 'address_line2', 'address_postal_code',
+            'address_city_geoname_id', 'address_country_code',
+            'timezone',
+            'cost_centers_count',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-
-    def get_clients_count(self, obj):
-        return obj.clients.count()
 
     def get_cost_centers_count(self, obj):
         return obj.cost_centers.count()
@@ -63,48 +61,55 @@ class AgencyListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for Agency list."""
     class Meta:
         model = Agency
-        fields = ['id', 'name', 'code', 'is_active']
+        fields = ['id', 'name', 'internal_code', 'is_active']
 
 
 class CostCenterSerializer(serializers.ModelSerializer):
     """Serializer for CostCenter model."""
     agency_name = serializers.CharField(source='agency.name', read_only=True)
-    annual_budget = serializers.DecimalField(
-        max_digits=18, decimal_places=2, read_only=True
-    )
 
     class Meta:
         model = CostCenter
         fields = [
-            'id', 'agency', 'agency_name', 'name', 'code', 'is_active',
-            'description', 'annual_budget_micros', 'annual_budget',
+            'id', 'agency', 'agency_name', 'name', 'code', 'internal_code', 'is_active',
+            'description', 'default_currency', 'timezone',
+            'payment_terms_days', 'billing_email', 'legal_entity_name',
+            'tax_id', 'tax_country_code',
+            'address_line1', 'address_line2', 'address_postal_code',
+            'address_city_geoname_id', 'address_country_code',
+            'billing_contact_name', 'billing_contact_phone',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'annual_budget']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 class CostCenterListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for CostCenter list."""
+    agency_name = serializers.CharField(source='agency.name', read_only=True)
+
     class Meta:
         model = CostCenter
-        fields = ['id', 'name', 'code', 'is_active']
+        fields = ['id', 'name', 'code', 'is_active', 'agency_name']
 
 
 class ClientSerializer(serializers.ModelSerializer):
     """Serializer for Client model."""
-    agency_name = serializers.CharField(source='agency.name', read_only=True)
-    cost_center_name = serializers.CharField(
-        source='cost_center.name', read_only=True, allow_null=True
-    )
+    cost_center_name = serializers.CharField(source='cost_center.name', read_only=True)
+    agency_name = serializers.CharField(source='cost_center.agency.name', read_only=True)
     advertisers_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Client
         fields = [
-            'id', 'agency', 'agency_name', 'cost_center', 'cost_center_name',
-            'name', 'code', 'is_active',
-            'contact_name', 'contact_email', 'contact_phone', 'address',
-            'industry', 'website', 'logo', 'notes',
+            'id', 'cost_center', 'cost_center_name', 'agency_name',
+            'name', 'internal_code', 'is_active', 'status',
+            'description', 'external_id',
+            'currency_show', 'timezone',
+            'contact_name', 'contact_position', 'contact_email', 'contact_email_alt',
+            'contact_phone', 'contact_phone_alt',
+            'address_line1', 'address_line2', 'address_postal_code', 'address_city_geoname_id',
+            'payment_terms_days_override', 'billing_email_override',
+            'credit_limit_amount_micros', 'credit_risk_level',
             'advertisers_count',
             'created_at', 'updated_at'
         ]
@@ -116,24 +121,29 @@ class ClientSerializer(serializers.ModelSerializer):
 
 class ClientListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for Client list."""
+    cost_center_name = serializers.CharField(source='cost_center.name', read_only=True)
+    agency_name = serializers.CharField(source='cost_center.agency.name', read_only=True)
+
     class Meta:
         model = Client
-        fields = ['id', 'name', 'code', 'is_active', 'industry']
+        fields = ['id', 'name', 'internal_code', 'is_active', 'status', 'cost_center_name', 'agency_name']
 
 
 class AdvertiserSerializer(serializers.ModelSerializer):
     """Serializer for Advertiser model."""
     client_name = serializers.CharField(source='client.name', read_only=True)
-    agency_name = serializers.CharField(source='client.agency.name', read_only=True)
+    agency_name = serializers.CharField(source='client.cost_center.agency.name', read_only=True)
 
     class Meta:
         model = Advertiser
         fields = [
             'id', 'client', 'client_name', 'agency_name',
-            'name', 'code', 'is_active',
-            'brand_name', 'category',
-            'contact_name', 'contact_email',
-            'logo', 'description',
+            'name', 'internal_code', 'is_active', 'status',
+            'tax_id', 'industry',
+            'contact_name', 'contact_email', 'contact_email_alt',
+            'contact_phone', 'contact_phone_alt',
+            'address_line1', 'address_line2', 'address_postal_code',
+            'address_city_geoname_id', 'address_country_code',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -141,46 +151,30 @@ class AdvertiserSerializer(serializers.ModelSerializer):
 
 class AdvertiserListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for Advertiser list."""
+    client_name = serializers.CharField(source='client.name', read_only=True)
+
     class Meta:
         model = Advertiser
-        fields = ['id', 'name', 'code', 'is_active', 'brand_name']
+        fields = ['id', 'name', 'internal_code', 'is_active', 'status', 'client_name']
 
 
 class CurrencySerializer(serializers.ModelSerializer):
     """Serializer for Currency model."""
     class Meta:
         model = Currency
-        fields = ['id', 'code', 'name', 'symbol', 'is_active', 'decimal_places']
-
-
-class ExchangeRateSerializer(serializers.ModelSerializer):
-    """Serializer for ExchangeRate model."""
-    from_currency_code = serializers.CharField(
-        source='from_currency.code', read_only=True
-    )
-    to_currency_code = serializers.CharField(
-        source='to_currency.code', read_only=True
-    )
-
-    class Meta:
-        model = ExchangeRate
-        fields = [
-            'id', 'from_currency', 'from_currency_code',
-            'to_currency', 'to_currency_code',
-            'rate', 'effective_date', 'source',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['code', 'name', 'symbol', 'is_active']
 
 
 class AuditLogSerializer(serializers.ModelSerializer):
     """Serializer for AuditLog model."""
+    created_by_email = serializers.CharField(source='created_by.email', read_only=True, allow_null=True)
+
     class Meta:
         model = AuditLog
         fields = [
-            'id', 'timestamp', 'user_id', 'user_email', 'action',
-            'entity_type', 'entity_id', 'entity_name',
-            'old_values', 'new_values', 'ip_address', 'notes'
+            'id', 'entity_type', 'entity_id', 'action',
+            'description', 'created_by', 'created_by_email',
+            'created_at'
         ]
         read_only_fields = fields
 
@@ -193,33 +187,34 @@ class AdvertiserNestedSerializer(serializers.ModelSerializer):
     """Nested serializer for Advertiser within Client."""
     class Meta:
         model = Advertiser
-        fields = ['id', 'name', 'code', 'brand_name', 'is_active']
+        fields = ['id', 'name', 'internal_code', 'is_active', 'status']
 
 
 class ClientNestedSerializer(serializers.ModelSerializer):
-    """Nested serializer for Client within Agency."""
+    """Nested serializer for Client within CostCenter."""
     advertisers = AdvertiserNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = Client
-        fields = ['id', 'name', 'code', 'is_active', 'advertisers']
+        fields = ['id', 'name', 'internal_code', 'is_active', 'status', 'advertisers']
 
 
 class CostCenterNestedSerializer(serializers.ModelSerializer):
     """Nested serializer for CostCenter within Agency."""
+    clients = ClientNestedSerializer(many=True, read_only=True)
+
     class Meta:
         model = CostCenter
-        fields = ['id', 'name', 'code', 'is_active']
+        fields = ['id', 'name', 'code', 'is_active', 'clients']
 
 
 class AgencyNestedSerializer(serializers.ModelSerializer):
-    """Nested serializer for Agency with clients and cost centers."""
-    clients = ClientNestedSerializer(many=True, read_only=True)
+    """Nested serializer for Agency with cost centers."""
     cost_centers = CostCenterNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = Agency
-        fields = ['id', 'name', 'code', 'is_active', 'clients', 'cost_centers']
+        fields = ['id', 'name', 'internal_code', 'is_active', 'cost_centers']
 
 
 class TenantDetailSerializer(serializers.ModelSerializer):
@@ -229,10 +224,8 @@ class TenantDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tenant
         fields = [
-            'id', 'name', 'slug', 'is_active',
-            'default_currency', 'timezone', 'language',
-            'contact_email', 'contact_phone', 'address',
-            'logo', 'description', 'agencies',
+            'id', 'name', 'code_prefix', 'is_active',
+            'agencies',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

@@ -5,7 +5,7 @@ from django.contrib import admin
 from django_tenants.admin import TenantAdminMixin
 from .models import (
     Tenant, Domain, Agency, CostCenter, Client, Advertiser,
-    Currency, Timezone, Industry, SystemParameter, SystemVersion, AuditLog
+    Currency, Timezone, Industry, SystemParameter, SystemVersion
 )
 
 
@@ -91,22 +91,4 @@ class SystemVersionAdmin(admin.ModelAdmin):
     date_hierarchy = 'applied_at'
 
 
-@admin.register(AuditLog)
-class AuditLogAdmin(admin.ModelAdmin):
-    list_display = ['entity_type', 'entity_id', 'action', 'created_by', 'created_at']
-    list_filter = ['action', 'entity_type', 'created_at']
-    search_fields = ['entity_id', 'description']
-    readonly_fields = [
-        'id', 'entity_type', 'entity_id', 'action',
-        'description', 'created_by', 'created_at', 'updated_at'
-    ]
-    date_hierarchy = 'created_at'
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
+# AuditLogAdmin is now registered in apps.audit.admin

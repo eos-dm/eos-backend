@@ -131,7 +131,7 @@ class AuditLog(models.Model):
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        related_name='audit_logs',
+        related_name='audit_audit_logs',
         verbose_name=_('created by'),
         null=True,
         blank=True,

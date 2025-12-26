@@ -1,10 +1,10 @@
 """
 Campaigns Serializers - Module 4 API
+Based on EOS Schema V100
 """
 from rest_framework import serializers
 from .models import (
-    Project, Campaign, MediaPlan, Subcampaign,
-    SubcampaignVersion, SubcampaignFee, CampaignComment, CampaignDocument
+    Project, MediaPlan, Campaign, Subcampaign, SubcampaignVersion
 )
 
 
@@ -16,79 +16,15 @@ class ProjectSerializer(serializers.ModelSerializer):
     """Full serializer for Project model."""
     advertiser_name = serializers.CharField(source='advertiser.name', read_only=True)
     client_name = serializers.CharField(source='advertiser.client.name', read_only=True)
-    agency_name = serializers.CharField(source='advertiser.client.agency.name', read_only=True)
-    owner_name = serializers.CharField(source='owner.full_name', read_only=True, allow_null=True)
-    planner_name = serializers.CharField(source='planner.full_name', read_only=True, allow_null=True)
-    budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
-    campaigns_count = serializers.SerializerMethodField()
-    total_campaign_budget = serializers.SerializerMethodField()
+    agency_name = serializers.CharField(source='advertiser.client.cost_center.agency.name', read_only=True)
+    media_plans_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
         fields = [
             'id', 'advertiser', 'advertiser_name', 'client_name', 'agency_name',
-            'name', 'code', 'description', 'status',
-            'start_date', 'end_date',
-            'budget_micros', 'budget', 'currency',
-            'owner', 'owner_name', 'planner', 'planner_name',
-            'notes', 'is_template',
-            'campaigns_count', 'total_campaign_budget',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-    def get_campaigns_count(self, obj):
-        return obj.campaigns.count()
-
-    def get_total_campaign_budget(self, obj):
-        return obj.total_campaign_budget_micros / 1_000_000
-
-
-class ProjectListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for Project list."""
-    advertiser_name = serializers.CharField(source='advertiser.name', read_only=True)
-    client_name = serializers.CharField(source='advertiser.client.name', read_only=True)
-    budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
-    campaigns_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Project
-        fields = [
-            'id', 'name', 'code', 'status',
-            'advertiser_name', 'client_name',
-            'start_date', 'end_date',
-            'budget', 'currency',
-            'campaigns_count',
-            'created_at'
-        ]
-
-    def get_campaigns_count(self, obj):
-        return obj.campaigns.count()
-
-
-# =============================================================================
-# CAMPAIGN SERIALIZERS
-# =============================================================================
-
-class CampaignSerializer(serializers.ModelSerializer):
-    """Full serializer for Campaign model."""
-    project_name = serializers.CharField(source='project.name', read_only=True)
-    advertiser_name = serializers.CharField(source='project.advertiser.name', read_only=True)
-    owner_name = serializers.CharField(source='owner.full_name', read_only=True, allow_null=True)
-    budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
-    duration_days = serializers.IntegerField(read_only=True)
-    media_plans_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Campaign
-        fields = [
-            'id', 'project', 'project_name', 'advertiser_name',
-            'name', 'code', 'description', 'status', 'objective',
-            'start_date', 'end_date', 'duration_days',
-            'budget_micros', 'budget', 'currency',
-            'target_audience', 'target_countries', 'target_kpis',
-            'owner', 'owner_name',
-            'notes', 'is_template',
+            'name', 'internal_code', 'description', 'status',
+            'is_active',
             'media_plans_count',
             'created_at', 'updated_at'
         ]
@@ -98,20 +34,24 @@ class CampaignSerializer(serializers.ModelSerializer):
         return obj.media_plans.count()
 
 
-class CampaignListSerializer(serializers.ModelSerializer):
-    """Lightweight serializer for Campaign list."""
-    project_name = serializers.CharField(source='project.name', read_only=True)
-    budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+class ProjectListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for Project list."""
+    advertiser_name = serializers.CharField(source='advertiser.name', read_only=True)
+    client_name = serializers.CharField(source='advertiser.client.name', read_only=True)
+    media_plans_count = serializers.SerializerMethodField()
 
     class Meta:
-        model = Campaign
+        model = Project
         fields = [
-            'id', 'name', 'code', 'status', 'objective',
-            'project_name',
-            'start_date', 'end_date',
-            'budget', 'currency',
+            'id', 'name', 'internal_code', 'status',
+            'advertiser_name', 'client_name',
+            'is_active',
+            'media_plans_count',
             'created_at'
         ]
+
+    def get_media_plans_count(self, obj):
+        return obj.media_plans.count()
 
 
 # =============================================================================
@@ -120,49 +60,86 @@ class CampaignListSerializer(serializers.ModelSerializer):
 
 class MediaPlanSerializer(serializers.ModelSerializer):
     """Full serializer for MediaPlan model."""
-    campaign_name = serializers.CharField(source='campaign.name', read_only=True)
-    project_name = serializers.CharField(source='campaign.project.name', read_only=True)
-    created_by_name = serializers.CharField(source='created_by.full_name', read_only=True, allow_null=True)
-    approved_by_name = serializers.CharField(source='approved_by.full_name', read_only=True, allow_null=True)
+    project_name = serializers.CharField(source='project.name', read_only=True)
     total_budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
-    subcampaigns_count = serializers.SerializerMethodField()
-    allocated_budget = serializers.SerializerMethodField()
+    campaigns_count = serializers.SerializerMethodField()
 
     class Meta:
         model = MediaPlan
         fields = [
-            'id', 'campaign', 'campaign_name', 'project_name',
-            'name', 'version', 'description', 'status',
+            'id', 'project', 'project_name',
+            'name', 'notes', 'external_id', 'status',
             'start_date', 'end_date',
-            'total_budget_micros', 'total_budget', 'currency',
-            'created_by', 'created_by_name',
-            'approved_by', 'approved_by_name', 'approved_at',
-            'client_approved_by', 'client_approved_at',
-            'notes', 'is_active_version',
-            'subcampaigns_count', 'allocated_budget',
+            'total_budget_micros', 'total_budget',
+            'is_active',
+            'campaigns_count',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'version', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def get_subcampaigns_count(self, obj):
-        return obj.subcampaigns.count()
-
-    def get_allocated_budget(self, obj):
-        total = sum(s.budget_micros for s in obj.subcampaigns.all())
-        return total / 1_000_000
+    def get_campaigns_count(self, obj):
+        return obj.campaigns.count()
 
 
 class MediaPlanListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for MediaPlan list."""
-    campaign_name = serializers.CharField(source='campaign.name', read_only=True)
+    project_name = serializers.CharField(source='project.name', read_only=True)
     total_budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
 
     class Meta:
         model = MediaPlan
         fields = [
-            'id', 'name', 'version', 'status',
-            'campaign_name',
-            'total_budget', 'is_active_version',
+            'id', 'name', 'status',
+            'project_name',
+            'start_date', 'end_date',
+            'total_budget', 'is_active',
+            'created_at'
+        ]
+
+
+# =============================================================================
+# CAMPAIGN SERIALIZERS
+# =============================================================================
+
+class CampaignSerializer(serializers.ModelSerializer):
+    """Full serializer for Campaign model."""
+    media_plan_name = serializers.CharField(source='media_plan.name', read_only=True)
+    project_name = serializers.CharField(source='media_plan.project.name', read_only=True)
+    total_budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+    subcampaigns_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Campaign
+        fields = [
+            'id', 'media_plan', 'media_plan_name', 'project_name',
+            'campaign_name', 'internal_campaign_name', 'external_id',
+            'landing_url',
+            'start_date', 'end_date',
+            'category', 'product', 'language',
+            'total_budget_micros', 'total_budget',
+            'invoice_reference',
+            'is_active',
+            'subcampaigns_count',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_subcampaigns_count(self, obj):
+        return obj.subcampaigns.count()
+
+
+class CampaignListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for Campaign list."""
+    media_plan_name = serializers.CharField(source='media_plan.name', read_only=True)
+    total_budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Campaign
+        fields = [
+            'id', 'campaign_name', 'internal_campaign_name',
+            'media_plan_name',
+            'start_date', 'end_date',
+            'total_budget', 'is_active',
             'created_at'
         ]
 
@@ -171,139 +148,62 @@ class MediaPlanListSerializer(serializers.ModelSerializer):
 # SUBCAMPAIGN SERIALIZERS
 # =============================================================================
 
-class SubcampaignFeeSerializer(serializers.ModelSerializer):
-    """Serializer for SubcampaignFee model."""
-    calculated_amount = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
-
-    class Meta:
-        model = SubcampaignFee
-        fields = [
-            'id', 'subcampaign', 'name', 'fee_type',
-            'calculation_method', 'percentage', 'cpm_micros', 'flat_fee_micros',
-            'calculated_amount_micros', 'calculated_amount',
-            'is_included_in_budget', 'notes',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'calculated_amount_micros', 'created_at', 'updated_at']
-
-
 class SubcampaignSerializer(serializers.ModelSerializer):
     """Full serializer for Subcampaign model."""
-    media_plan_name = serializers.CharField(source='media_plan.name', read_only=True)
-    campaign_name = serializers.CharField(source='media_plan.campaign.name', read_only=True)
-    budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
-    unit_price = serializers.DecimalField(max_digits=18, decimal_places=6, read_only=True)
-    fees = SubcampaignFeeSerializer(many=True, read_only=True)
-    total_fees = serializers.SerializerMethodField()
+    campaign_name = serializers.CharField(source='campaign.campaign_name', read_only=True)
+    media_plan_name = serializers.CharField(source='campaign.media_plan.name', read_only=True)
+    is_editable = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Subcampaign
         fields = [
-            'id', 'media_plan', 'media_plan_name', 'campaign_name',
-            'name', 'code', 'description', 'status',
-            'channel', 'platform',
-            'start_date', 'end_date',
-            'budget_micros', 'budget', 'currency',
-            'buying_type', 'unit_price_micros', 'unit_price', 'estimated_units',
-            'target_audience', 'target_locations', 'target_devices',
-            'creative_format', 'creative_sizes',
-            'external_id', 'external_account_id',
-            'notes', 'fees', 'total_fees',
+            'id', 'campaign', 'campaign_name', 'media_plan_name',
+            'name', 'subcampaign_code', 'objective', 'status',
+            'goal', 'publisher', 'tactic', 'creative_type', 'country', 'effort',
+            'trafficker_user',
+            'l5_custom1', 'l8_custom2', 'l9_custom3', 'l11_custom4', 'l13_custom5',
+            'l15_custom6', 'l16_custom7', 'l17_custom8', 'l19_custom9', 'l20_custom10',
+            'city_geoname_id',
+            'is_active', 'is_editable',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-    def get_total_fees(self, obj):
-        total = sum(f.calculated_amount_micros for f in obj.fees.all())
-        return total / 1_000_000
+        read_only_fields = ['id', 'subcampaign_code', 'created_at', 'updated_at']
 
 
 class SubcampaignListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for Subcampaign list."""
-    budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+    campaign_name = serializers.CharField(source='campaign.campaign_name', read_only=True)
+    is_editable = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Subcampaign
         fields = [
-            'id', 'name', 'code', 'status',
-            'channel', 'platform',
-            'start_date', 'end_date',
-            'budget', 'buying_type',
+            'id', 'name', 'subcampaign_code', 'status',
+            'campaign_name',
+            'goal', 'publisher',
+            'is_active', 'is_editable',
             'created_at'
         ]
 
 
 class SubcampaignVersionSerializer(serializers.ModelSerializer):
     """Serializer for SubcampaignVersion model."""
-    changed_by_name = serializers.CharField(source='changed_by.full_name', read_only=True, allow_null=True)
+    unit_price = serializers.DecimalField(max_digits=18, decimal_places=6, read_only=True)
+    planned_budget = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+    is_editable = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = SubcampaignVersion
         fields = [
-            'id', 'subcampaign', 'version_number',
-            'budget_micros', 'start_date', 'end_date', 'status',
-            'change_summary', 'changed_by', 'changed_by_name',
-            'snapshot_data',
-            'created_at'
-        ]
-        read_only_fields = fields
-
-
-# =============================================================================
-# COMMENT AND DOCUMENT SERIALIZERS
-# =============================================================================
-
-class CampaignCommentSerializer(serializers.ModelSerializer):
-    """Serializer for CampaignComment model."""
-    author_name = serializers.CharField(source='author.full_name', read_only=True, allow_null=True)
-    author_email = serializers.CharField(source='author.email', read_only=True, allow_null=True)
-    replies_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = CampaignComment
-        fields = [
-            'id', 'campaign', 'author', 'author_name', 'author_email',
-            'parent', 'content', 'is_internal',
-            'replies_count',
+            'id', 'subcampaign', 'version_number', 'version_name',
+            'start_date', 'end_date', 'status',
+            'currency', 'media_unit_type', 'performance_pricing_model',
+            'unit_price_micros', 'unit_price', 'is_unit_price_overwritten',
+            'planned_units', 'planned_budget_micros', 'planned_budget',
+            'is_active', 'is_editable',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'author', 'created_at', 'updated_at']
-
-    def get_replies_count(self, obj):
-        return obj.replies.count()
-
-    def create(self, validated_data):
-        validated_data['author'] = self.context['request'].user
-        return super().create(validated_data)
-
-
-class CampaignDocumentSerializer(serializers.ModelSerializer):
-    """Serializer for CampaignDocument model."""
-    uploaded_by_name = serializers.CharField(source='uploaded_by.full_name', read_only=True, allow_null=True)
-    file_url = serializers.SerializerMethodField()
-
-    class Meta:
-        model = CampaignDocument
-        fields = [
-            'id', 'campaign', 'name', 'document_type',
-            'file', 'file_url',
-            'uploaded_by', 'uploaded_by_name',
-            'is_client_visible', 'description',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'uploaded_by', 'created_at', 'updated_at']
-
-    def get_file_url(self, obj):
-        if obj.file:
-            request = self.context.get('request')
-            if request:
-                return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
-        return None
-
-    def create(self, validated_data):
-        validated_data['uploaded_by'] = self.context['request'].user
-        return super().create(validated_data)
+        read_only_fields = ['id', 'created_at', 'updated_at']
 
 
 # =============================================================================
@@ -318,27 +218,25 @@ class SubcampaignDetailSerializer(SubcampaignSerializer):
         fields = SubcampaignSerializer.Meta.fields + ['versions']
 
 
-class MediaPlanDetailSerializer(MediaPlanSerializer):
-    """Detailed serializer for MediaPlan with subcampaigns."""
-    subcampaigns = SubcampaignSerializer(many=True, read_only=True)
-
-    class Meta(MediaPlanSerializer.Meta):
-        fields = MediaPlanSerializer.Meta.fields + ['subcampaigns']
-
-
 class CampaignDetailSerializer(CampaignSerializer):
-    """Detailed serializer for Campaign with media plans."""
-    media_plans = MediaPlanListSerializer(many=True, read_only=True)
-    comments = CampaignCommentSerializer(many=True, read_only=True)
-    documents = CampaignDocumentSerializer(many=True, read_only=True)
+    """Detailed serializer for Campaign with subcampaigns."""
+    subcampaigns = SubcampaignListSerializer(many=True, read_only=True)
 
     class Meta(CampaignSerializer.Meta):
-        fields = CampaignSerializer.Meta.fields + ['media_plans', 'comments', 'documents']
+        fields = CampaignSerializer.Meta.fields + ['subcampaigns']
+
+
+class MediaPlanDetailSerializer(MediaPlanSerializer):
+    """Detailed serializer for MediaPlan with campaigns."""
+    campaigns = CampaignListSerializer(many=True, read_only=True)
+
+    class Meta(MediaPlanSerializer.Meta):
+        fields = MediaPlanSerializer.Meta.fields + ['campaigns']
 
 
 class ProjectDetailSerializer(ProjectSerializer):
-    """Detailed serializer for Project with campaigns."""
-    campaigns = CampaignListSerializer(many=True, read_only=True)
+    """Detailed serializer for Project with media plans."""
+    media_plans = MediaPlanListSerializer(many=True, read_only=True)
 
     class Meta(ProjectSerializer.Meta):
-        fields = ProjectSerializer.Meta.fields + ['campaigns']
+        fields = ProjectSerializer.Meta.fields + ['media_plans']
