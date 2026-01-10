@@ -1,0 +1,156 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: eos-postgres
+    environment:
+      POSTGRES_DB: eos_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: rorbot$0627
+    ports:
+      - "0.0.0.0:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eos-network
+
+  # Redis (for Celery message broker and caching)
+  redis:
+    image: redis:7-alpine
+    container_name: eos-redis
+    ports:
+      - "0.0.0.0:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eos-network
+
+  # Django Backend
+  backend:
+    build:
+      context: ./eos-backend
+      dockerfile: Dockerfile
+    container_name: eos-backend
+    command: >
+      sh -c "
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        gunicorn --bind 0.0.0.0:8000 --workers 3 --timeout 120 --graceful-timeout 30 config.wsgi:application
+      "
+    environment:
+      DB_NAME: eos_db
+      DB_USER: postgres
+      DB_PASSWORD: rorbot$0627
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: yd*ak_=4r2j2xy(k!)r@g(sf*uq@#p=4%3g5h^p9w8z04@7!m8
+      DEBUG: "True"
+      ALLOWED_HOSTS: localhost,127.0.0.1,10.2.0.4,20.121.122.237,backend
+      CORS_ALLOWED_ORIGINS: http://localhost,http://localhost:3000,http://localhost:5173,http://10.2.0.4,http://10.2.0.4:8000,http://10.2.0.4:80,http://20.121.122.237,http://20.121.122.237:8000
+    ports:
+      - "0.0.0.0:8000:8000"
+    volumes:
+      - ./eos-backend:/app
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eos-network
+    restart: unless-stopped
+
+  # Celery Worker
+  celery:
+    build:
+      context: ./eos-backend
+      dockerfile: Dockerfile
+    container_name: eos-celery
+    command: celery -A config worker --loglevel=info
+    environment:
+      DB_NAME: eos_db
+      DB_USER: postgres
+      DB_PASSWORD: rorbot$0627
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: yd*ak_=4r2j2xy(k!)r@g(sf*uq@#p=4%3g5h^p9w8z04@7!m8
+      DEBUG: "True"
+    volumes:
+      - ./eos-backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eos-network
+    restart: unless-stopped
+
+  # Celery Beat (for scheduled tasks)
+  celery-beat:
+    build:
+      context: ./eos-backend
+      dockerfile: Dockerfile
+    container_name: eos-celery-beat
+    command: celery -A config beat --loglevel=info
+    environment:
+      DB_NAME: eos_db
+      DB_USER: postgres
+      DB_PASSWORD: rorbot$0627
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: yd*ak_=4r2j2xy(k!)r@g(sf*uq@#p=4%3g5h^p9w8z04@7!m8
+      DEBUG: "True"
+    volumes:
+      - ./eos-backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - eos-network
+    restart: unless-stopped
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./eos-frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+    container_name: eos-frontend
+    ports:
+      - "0.0.0.0:80:80"
+    depends_on:
+      - backend
+    networks:
+      - eos-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  static_files:
+  media_files:
+
+networks:
+  eos-network:
+    driver: bridge
